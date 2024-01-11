@@ -150,6 +150,16 @@ var (
 		"0.8.2.0",
 		"The assumed version of Kafka.",
 	)
+	userName = flag.String(
+		"userName",
+		"0.8.2.0",
+		"username.",
+	)
+	password = flag.String(
+		"password",
+		"0.8.2.0",
+		"password.",
+	)
 	verbose = flag.Bool(
 		"verbose",
 		false,
@@ -258,6 +268,11 @@ func main() {
 	config.ChannelBufferSize = *channelBufferSize
 	config.Version = parseVersion(*version)
 
+	config.Net.SASL.User = *userName
+	config.Net.SASL.Password = *password
+	config.Net.SASL.Handshake = true
+	config.Net.SASL.Enable = true
+
 	if *securityProtocol == "SSL" {
 		tlsConfig, err := tls.NewConfig(*tlsClientCert, *tlsClientKey)
 		if err != nil {
@@ -329,7 +344,7 @@ func runAsyncProducer(topic string, partition, messageLoad, messageSize int,
 		}
 	}()
 
-	messages := generateMessages(topic, partition, messageLoad, messageSize)
+	//messages := generateMessages(topic, partition, messageLoad, messageSize)
 
 	messagesDone := make(chan struct{})
 	go func() {
@@ -345,17 +360,43 @@ func runAsyncProducer(topic string, partition, messageLoad, messageSize int,
 
 	if throughput > 0 {
 		ticker := time.NewTicker(time.Second)
-		for idx, message := range messages {
+		for i := 0; i < messageLoad; i++ {
+			payload := make([]byte, messageSize)
+			if _, err := rand.Read(payload); err != nil {
+				printErrorAndExit(69, "Failed to generate message payload: %s", err)
+			}
+			message := &sarama.ProducerMessage{
+				Topic: topic,
+				Value: sarama.ByteEncoder(payload),
+			}
 			producer.Input() <- message
-			if (idx+1)%throughput == 0 {
+			if (i+1)%throughput == 0 {
 				<-ticker.C
 			}
 		}
+		//for idx, message := range messages {
+		//	producer.Input() <- message
+		//	if (idx+1)%throughput == 0 {
+		//		<-ticker.C
+		//	}
+		//}
 		ticker.Stop()
 	} else {
-		for _, message := range messages {
+		for i := 0; i < messageLoad; i++ {
+			payload := make([]byte, messageSize)
+			if _, err := rand.Read(payload); err != nil {
+				printErrorAndExit(69, "Failed to generate message payload: %s", err)
+			}
+			message := &sarama.ProducerMessage{
+				Topic: topic,
+				Value: sarama.ByteEncoder(payload),
+			}
 			producer.Input() <- message
 		}
+
+		//for _, message := range messages {
+		//	producer.Input() <- message
+		//}
 	}
 
 	<-messagesDone
